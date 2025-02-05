@@ -1476,7 +1476,8 @@ gc_should_collect(GCState *gcstate)
 {
     int count = _Py_atomic_load_int_relaxed(&gcstate->young.count);
     int threshold = gcstate->young.threshold;
-    if (count <= threshold || threshold == 0 || !gcstate->enabled) {
+    int gc_enabled = _Py_atomic_load_int_relaxed(&gcstate->enabled);
+    if (count <= threshold || threshold == 0 || !gc_enabled) {
         return false;
     }
     // Avoid quadratic behavior by scaling threshold to the number of live
@@ -1952,25 +1953,21 @@ int
 PyGC_Enable(void)
 {
     GCState *gcstate = get_gc_state();
-    int old_state = gcstate->enabled;
-    gcstate->enabled = 1;
-    return old_state;
+    return _Py_atomic_exchange_int(&gcstate->enabled, 1);
 }
 
 int
 PyGC_Disable(void)
 {
     GCState *gcstate = get_gc_state();
-    int old_state = gcstate->enabled;
-    gcstate->enabled = 0;
-    return old_state;
+    return _Py_atomic_exchange_int(&gcstate->enabled, 0);
 }
 
 int
 PyGC_IsEnabled(void)
 {
     GCState *gcstate = get_gc_state();
-    return gcstate->enabled;
+    return _Py_atomic_load_int_relaxed(&gcstate->enabled);
 }
 
 /* Public API to invoke gc.collect() from C */
@@ -1980,7 +1977,7 @@ PyGC_Collect(void)
     PyThreadState *tstate = _PyThreadState_GET();
     GCState *gcstate = &tstate->interp->gc;
 
-    if (!gcstate->enabled) {
+    if (!_Py_atomic_load_int_relaxed(&gcstate->enabled)) {
         return 0;
     }
 
@@ -2139,8 +2136,7 @@ _PyObject_GC_Link(PyObject *op)
 void
 _Py_RunGC(PyThreadState *tstate)
 {
-    GCState *gcstate = get_gc_state();
-    if (!gcstate->enabled) {
+    if (!PyGC_IsEnabled()) {
         return;
     }
     gc_collect_main(tstate, 0, _Py_GC_REASON_HEAP);
