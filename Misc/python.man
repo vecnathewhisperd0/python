@@ -37,6 +37,9 @@ python \- an interpreted, interactive, object-oriented programming language
 .B \-q
 ]
 [
+.B \-R
+]
+[
 .B \-O
 ]
 [
@@ -212,6 +215,11 @@ as the current directory, the script's directory or an empty string. See also th
 Do not print the version and copyright messages. These messages are
 also suppressed in non-interactive mode.
 .TP
+.B \-R
+Turn on hash randomization. This option only has an effect if the
+\fBPYTHONHASHSEED\fR environment variable is set to \fB0\fR, since hash
+randomization is enabled by default.
+.TP
 .B \-s
 Don't add user site directory to sys.path.
 .TP
@@ -359,9 +367,23 @@ Set implementation-specific option. The following options are available:
     -X frozen_modules=[on|off]: whether or not frozen modules should be used.
        The default is "on" (or "off" if you are running a local build).
 
+    -X gil=[0|1]: enable (1) or disable (0) the GIL; also PYTHON_GIL
+       Only available in builds configured with --disable-gil.
+
     -X int_max_str_digits=number: limit the size of int<->str conversions.
        This helps avoid denial of service attacks when parsing untrusted data.
        The default is sys.int_info.default_max_str_digits.  0 disables.
+
+    -X perf: support the Linux "perf" profiler; also PYTHONPERFSUPPORT=1
+
+    -X perf_jit: support the Linux "perf" profiler with DWARF support;
+       also PYTHON_PERF_JIT_SUPPORT=1
+
+    -X cpu_count=N: override the return value of os.cpu_count();
+       -X cpu_count=default cancels overriding; also PYTHON_CPU_COUNT
+
+    -X presite=MOD: import this module before site; also PYTHON_PRESITE
+       This only works on debug builds.
 
 .TP
 .B \-x
@@ -499,6 +521,12 @@ If this is set to a non-empty string it is equivalent to specifying
 the \fB\-B\fP option (don't try to write
 .I .pyc
 files).
+.IP PYTHONPYCACHEPREFIX
+If this is set, Python will write \fB.pyc\fR files in a mirror directory tree
+at this path, instead of in \fB__pycache__\fR directories within the source
+tree.
+.IP
+This is equivalent to specifying the \fB\-X pycache_prefix=\fIPATH\fR option.
 .IP PYTHONINSPECT
 If this is set to a non-empty string it is equivalent to specifying
 the \fB\-i\fP option.
@@ -541,6 +569,8 @@ Limit the maximum digit characters in an int value
 when converting from a string and when converting an int back to a str.
 A value of 0 disables the limit.  Conversions to or from bases 2, 4, 8,
 16, and 32 are never limited.
+.IP
+This is equivalent to the \fB-X int_max_str_digits=\fINUMBER\fR option.
 .IP PYTHONMALLOC
 Set the Python memory allocators and/or install debug hooks. The available
 memory allocators are
@@ -567,6 +597,52 @@ This variable is ignored if the
 environment variable is used to force the
 .BR malloc (3)
 allocator of the C library, or if Python is configured without pymalloc support.
+.IP PYTHONCOERCELOCALE
+If set to the value 0, causes the main Python command line application to skip
+coercing the legacy ASCII-based C and POSIX locales to a more capable UTF-8
+based alternative.
+.IP PYTHONDEVMODE
+If this environment variable is set to a non-empty string, enable Python's
+"development mode", introducing additional runtime checks that are too
+expensive to be enabled by default.
+.IP
+This is equivalent to the \fB\-X dev\fR option.
+.IP PYTHONUTF8
+If set to 1, enable the Python "UTF-8 Mode". Setting to 0 disables.
+.IP PYTHONWARNDEFAULTENCODING
+If this environment variable is set to a non-empty string, issue a
+\fIEncodingWarning\fR when the locale-specific default encoding is used.
+.IP PYTHONNODEBUGRANGES
+If this variable is set, it disables the inclusion of the tables mapping
+extra location information (end line, start column offset and end column
+offset) to every instruction in code objects. This is useful when smaller code
+objects and pyc files are desired as well as suppressing the extra visual
+location indicators when the interpreter displays tracebacks.
+.IP PYTHONPERFSUPPORT
+If this variable is set to a nonzero value, it enables support for
+the Linux perf profiler so Python calls can be detected by it.
+Setting to 0 disables.
+.IP
+See also the \fB\-X perf\fR option.
+.IP PYTHON_PERF_JIT_SUPPORT
+If this variable is set to a nonzero value, it enables support for
+the Linux perf profiler so Python calls can be detected by it using DWARF
+information.
+Setting to 0 disables.
+.IP
+See also the \fB\-X perf_jit\fR option.
+.IP PYTHON_CPU_COUNT
+If this variable is set to a positive integer, it overrides the return
+values of \fIos.cpu_count\fR and \fIos.process_cpu_count\fR.
+.IP
+See also the \fB\-X cpu_count\fR option.
+.IP PYTHON_FROZEN_MODULES
+If this variable is set to \fBon\fR or \fBoff\fR, it determines whether or not
+frozen modules are ignored by the import machinery.  A value of \fBon\fR means
+they get imported and \fBoff\fR means they are ignored.  The default is \fBon\fR
+for non-debug builds (the normal case) and \fBoff\fR for debug builds.
+.IP
+See also the \fB\-X frozen_modules\fR option.
 .IP PYTHONASYNCIODEBUG
 If this environment variable is set to a non-empty string, enable the debug
 mode of the asyncio module.
@@ -605,6 +681,10 @@ can be set to the callable of your debugger of choice.
 .IP PYTHON_COLORS
 If this variable is set to 1, the interpreter will colorize various kinds of
 output. Setting it to 0 deactivates this behavior.
+.IP PYTHON_BASIC_REPL
+If this variable is set to any value, the interpreter will not attempt to
+load the Python-based REPL that requires curses and readline, and will instead
+use the traditional parser-based REPL.
 .IP PYTHON_HISTORY
 This environment variable can be used to set the location of a history file
 (on Unix, it is \fI~/.python_history\fP by default).
@@ -612,6 +692,8 @@ This environment variable can be used to set the location of a history file
 If this variable is set to 1, the global interpreter lock (GIL) will be forced
 on. Setting it to 0 forces the GIL off. Only available in builds configured
 with \fB--disable-gil\fP.
+.IP
+This is equivalent to the \fB-X gil\fR option.
 .SS Debug-mode variables
 Setting these variables only has an effect in a debug build of Python, that is,
 if Python was configured with the
@@ -619,6 +701,17 @@ if Python was configured with the
 .IP PYTHONDUMPREFS
 If this environment variable is set, Python will dump objects and reference
 counts still alive after shutting down the interpreter.
+.IP PYTHONDUMPREFSFILE
+If set, Python will dump objects and reference counts still alive after
+shutting down the interpreter into a file under the path given as the value to
+this environment variable.
+.IP PYTHON_PRESITE
+If this variable is set to a module, that module will be imported
+early in the interpreter lifecycle, before the \fIsite\fR module is
+executed, and before the \fI__main__\fR module is created.
+This only works on debug builds.
+.IP
+This is equivalent to the \fB-X presite=\fImodule\fR option.
 .SH AUTHOR
 The Python Software Foundation: https://www.python.org/psf/
 .SH INTERNET RESOURCES
