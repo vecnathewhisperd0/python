@@ -1,0 +1,2 @@
+:mod:`xml.etree`: Fix a crash in :meth:`Element.remove <xml.etree.ElementTree.Element.remove>`
+when the element is concurrently mutated. Patch by Bénédikt Tran.
