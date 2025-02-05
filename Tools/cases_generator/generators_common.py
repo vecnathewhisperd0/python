@@ -4,6 +4,7 @@ from typing import TextIO
 from analyzer import (
     Instruction,
     Uop,
+    Label,
     Properties,
     StackItem,
     analysis_error,
@@ -13,7 +14,7 @@ from analyzer import (
 from cwriter import CWriter
 from typing import Callable, TextIO, Iterator, Iterable
 from lexer import Token
-from stack import Storage, StackError
+from stack import Storage, StackError, Stack
 
 # Set this to true for voluminous output showing state of stack and locals
 PRINT_STACKS = False
@@ -154,28 +155,31 @@ class Emitter:
         storage: Storage,
         inst: Instruction | None,
     ) -> bool:
-        self.out.emit_at("DEOPT_IF", tkn)
+        self.out.start_line()
+        self.out.emit("if (")
         lparen = next(tkn_iter)
-        self.emit(lparen)
         assert lparen.kind == "LPAREN"
         first_tkn = tkn_iter.peek()
         emit_to(self.out, tkn_iter, "RPAREN")
+        self.emit(") {\n")
         next(tkn_iter)  # Semi colon
-        self.out.emit(", ")
         assert inst is not None
         assert inst.family is not None
-        self.out.emit(inst.family.name)
-        self.out.emit(");\n")
+        family_name = inst.family.name
+        self.emit(f"UPDATE_MISS_STATS({family_name});\n")
+        self.emit(f"assert(_PyOpcode_Deopt[opcode] == ({family_name}));\n")
+        self.emit(f"JUMP_TO_PREDICTED({family_name});\n")
+        self.emit("}\n")
         return not always_true(first_tkn)
 
     exit_if = deopt_if
 
     def goto_error(self, offset: int, label: str, storage: Storage) -> str:
         if offset > 0:
-            return f"goto pop_{offset}_{label};"
+            return f"JUMP_TO_LABEL(pop_{offset}_{label});"
         if offset < 0:
             storage.copy().flush(self.out)
-        return f"goto {label};"
+        return f"JUMP_TO_LABEL({label});"
 
     def error_if(
         self,
@@ -400,7 +404,7 @@ class Emitter:
         self.emit(tkn)
         return True
 
-    def goto_label(self, goto: Token, label: Token, storage: Storage) -> None:
+    def goto_label(self, goto: Token, label: Token, storage: Storage, wrap_paren: bool = False) -> None:
         if label.text not in self.labels:
             print(self.labels.keys())
             raise analysis_error(f"Label '{label.text}' does not exist", label)
@@ -411,7 +415,11 @@ class Emitter:
         elif storage.spilled:
             raise analysis_error("Cannot jump from spilled label without reloading the stack pointer", goto)
         self.out.emit(goto)
+        if wrap_paren:
+            self.out.emit("(")
         self.out.emit(label)
+        if wrap_paren:
+            self.out.emit(")")
 
     def emit_save(self, storage: Storage) -> None:
         storage.save(self.out)
@@ -603,7 +611,7 @@ class Emitter:
                 elif tkn.kind == "GOTO":
                     label_tkn = next(tkn_iter)
                     self.goto_label(tkn, label_tkn, storage)
-                    reachable = False;
+                    reachable = False
                 elif tkn.kind == "IDENTIFIER":
                     if tkn.text in self._replacers:
                         if not self._replacers[tkn.text](tkn, tkn_iter, uop, storage, inst):
@@ -618,7 +626,14 @@ class Emitter:
                         if tkn.text.startswith("DISPATCH"):
                             self._print_storage(storage)
                             reachable = False
-                        self.out.emit(tkn)
+                        if tkn.text.startswith("JUMP_TO_LABEL"):
+                            next(tkn_iter)
+                            label_tkn = next(tkn_iter)
+                            next(tkn_iter)
+                            self.goto_label(tkn, label_tkn, storage, wrap_paren=True)
+                            reachable = False
+                        else:
+                            self.out.emit(tkn)
                 elif tkn.kind == "IF":
                     self.out.emit(tkn)
                     if_reachable, rbrace, storage = self._emit_if(tkn_iter, uop, storage, inst)
@@ -648,6 +663,20 @@ class Emitter:
         except StackError as ex:
             raise analysis_error(ex.args[0], rbrace) from None
         return storage
+
+    def emit_label(
+        self,
+        label: Label
+    ) -> None:
+        tkn_iter = TokenIterator(label.body)
+        self.out.start_line()
+        for tkn in tkn_iter:
+            if tkn.text in self._replacers:
+                storage = Storage(Stack(), [],[], [])
+                self._replacers[tkn.text](tkn, tkn_iter, label, storage, None)
+                continue
+            self.out.emit(tkn)
+
 
     def emit(self, txt: str | Token) -> None:
         self.out.emit(txt)

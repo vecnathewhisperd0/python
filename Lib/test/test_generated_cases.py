@@ -458,7 +458,11 @@ class TestGeneratedCases(unittest.TestCase):
             INSTRUCTION_STATS(OP3);
             static_assert(INLINE_CACHE_ENTRIES_OP1 == 0, "incorrect cache size");
             _PyStackRef res;
-            DEOPT_IF(xxx, OP1);
+            if (xxx) {
+                UPDATE_MISS_STATS(OP1);
+                assert(_PyOpcode_Deopt[opcode] == (OP1));
+                JUMP_TO_PREDICTED(OP1);
+            }
             res = Py_None;
             stack_pointer[-1] = res;
             DISPATCH();
@@ -539,7 +543,7 @@ class TestGeneratedCases(unittest.TestCase):
             next_instr += 1;
             INSTRUCTION_STATS(OP);
             if (cond) {
-                goto label;
+                JUMP_TO_LABEL(label);
             }
             DISPATCH();
         }
@@ -558,7 +562,7 @@ class TestGeneratedCases(unittest.TestCase):
             next_instr += 1;
             INSTRUCTION_STATS(OP);
             if (cond) {
-                goto label;
+                JUMP_TO_LABEL(label);
             }
             // Comment is ok
             DISPATCH();
@@ -587,7 +591,7 @@ class TestGeneratedCases(unittest.TestCase):
             left = stack_pointer[-2];
             SPAM(left, right);
             if (cond) {
-                goto pop_2_label;
+                JUMP_TO_LABEL(pop_2_label);
             }
             res = 0;
             stack_pointer[-2] = res;
@@ -618,7 +622,7 @@ class TestGeneratedCases(unittest.TestCase):
             left = stack_pointer[-2];
             res = SPAM(left, right);
             if (cond) {
-                goto pop_2_label;
+                JUMP_TO_LABEL(pop_2_label);
             }
             stack_pointer[-2] = res;
             stack_pointer += -1;
@@ -635,8 +639,9 @@ class TestGeneratedCases(unittest.TestCase):
     """
         output = """
         TARGET(OP) {
-            _Py_CODEUNIT* const this_instr = frame->instr_ptr = next_instr;
+            _Py_CODEUNIT* const this_instr = next_instr;
             (void)this_instr;
+            frame->instr_ptr = next_instr;
             next_instr += 4;
             INSTRUCTION_STATS(OP);
             uint16_t counter = read_u16(&this_instr[1].cache);
@@ -667,7 +672,7 @@ class TestGeneratedCases(unittest.TestCase):
             goto somewhere;
         }
 
-        somewhere:
+        LABEL(somewhere)
         {
 
         }
@@ -729,8 +734,9 @@ class TestGeneratedCases(unittest.TestCase):
         }
 
         TARGET(OP1) {
-            _Py_CODEUNIT* const this_instr = frame->instr_ptr = next_instr;
+            _Py_CODEUNIT* const this_instr = next_instr;
             (void)this_instr;
+            frame->instr_ptr = next_instr;
             next_instr += 2;
             INSTRUCTION_STATS(OP1);
             _PyStackRef left;
@@ -945,7 +951,7 @@ class TestGeneratedCases(unittest.TestCase):
             if (oparg == 0) {
                 stack_pointer += -1 - oparg;
                 assert(WITHIN_STACK_BOUNDS());
-                goto somewhere;
+                JUMP_TO_LABEL(somewhere);
             }
             stack_pointer += -1 - oparg;
             assert(WITHIN_STACK_BOUNDS());
@@ -1409,7 +1415,7 @@ class TestGeneratedCases(unittest.TestCase):
             {
                 // Mark j and k as used
                 if (cond) {
-                    goto pop_2_error;
+                    JUMP_TO_LABEL(pop_2_error);
                 }
             }
             stack_pointer += -2;
@@ -1453,7 +1459,7 @@ class TestGeneratedCases(unittest.TestCase):
                     stack_pointer[1] = b;
                     stack_pointer += 2;
                     assert(WITHIN_STACK_BOUNDS());
-                    goto error;
+                    JUMP_TO_LABEL(error);
                 }
             }
             stack_pointer[0] = a;
@@ -1480,14 +1486,14 @@ class TestGeneratedCases(unittest.TestCase):
             frame->instr_ptr = next_instr;
             next_instr += 1;
             INSTRUCTION_STATS(OP1);
-            goto here;
+            JUMP_TO_LABEL(here);
         }
 
         TARGET(OP2) {
             frame->instr_ptr = next_instr;
             next_instr += 1;
             INSTRUCTION_STATS(OP2);
-            goto there;
+            JUMP_TO_LABEL(there);
         }
         """
         self.run_cases_test(input, output)
@@ -1793,17 +1799,17 @@ class TestGeneratedCases(unittest.TestCase):
         """
 
         output = """
-        other_label:
+        LABEL(other_label)
         {
 
         }
 
-        other_label2:
+        LABEL(other_label2)
         {
 
         }
 
-        my_label:
+        LABEL(my_label)
         {
             // Comment
             _PyFrame_SetStackPointer(frame, stack_pointer);
@@ -1831,14 +1837,14 @@ class TestGeneratedCases(unittest.TestCase):
         """
 
         output = """
-        one:
+        LABEL(one)
         {
             /* STACK SPILLED */
             stack_pointer = _PyFrame_GetStackPointer(frame);
             goto two;
         }
 
-        two:
+        LABEL(two)
         {
             _PyFrame_SetStackPointer(frame, stack_pointer);
             goto one;
@@ -1887,20 +1893,26 @@ class TestGeneratedCases(unittest.TestCase):
         """
 
         output = """
-        my_label_1:
+        LABEL(my_label_1)
         {
             // Comment
+            _PyFrame_SetStackPointer(frame, stack_pointer);
             do_thing1();
+            stack_pointer = _PyFrame_GetStackPointer(frame);
             goto my_label_2;
         }
 
-        my_label_2:
+        LABEL(my_label_2)
         {
             // Comment
+            _PyFrame_SetStackPointer(frame, stack_pointer);
             do_thing2();
+            stack_pointer = _PyFrame_GetStackPointer(frame);
             goto my_label_1;
         }
         """
+        self.run_cases_test(input, output)
+
 
 class TestGeneratedAbstractCases(unittest.TestCase):
     def setUp(self) -> None:

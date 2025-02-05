@@ -14,6 +14,7 @@ from analyzer import (
     analyze_files,
     StackItem,
     analysis_error,
+    Label,
 )
 from generators_common import (
     DEFAULT_INPUT,
