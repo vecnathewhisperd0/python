@@ -1150,7 +1150,7 @@ In addition to the three supplied contexts, new contexts can be created with the
 
       Return a copy of the Decimal instance num.
 
-   .. method:: create_decimal(num)
+   .. method:: create_decimal(num='0')
 
       Creates a new Decimal instance from *num* but using *self* as
       context. Unlike the :class:`Decimal` constructor, the context precision,
